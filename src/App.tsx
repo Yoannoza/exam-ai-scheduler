@@ -8,6 +8,8 @@ import Index from "./pages/Index";
 import ExamManagement from "./pages/ExamManagement";
 import RoomManagement from "./pages/RoomManagement";
 import Schedule from "./pages/Schedule";
+import Students from "./pages/Students";
+import Departments from "./pages/Departments";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,6 +25,8 @@ const App = () => (
           <Route path="/exam-management" element={<ExamManagement />} />
           <Route path="/room-management" element={<RoomManagement />} />
           <Route path="/schedule" element={<Schedule />} />
+          <Route path="/students" element={<Students />} />
+          <Route path="/departments" element={<Departments />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

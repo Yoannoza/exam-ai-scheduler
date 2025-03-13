@@ -3,33 +3,43 @@ import { Calendar, Layout, Users, BookOpen, Check, AlertTriangle } from 'lucide-
 import { Card, CardContent, CardHeader, CardTitle } from '../common/Card';
 import { ExamCard } from '../common/ExamCard';
 import { RoomCard } from '../common/RoomCard';
+import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
 
 const StatCard = ({ 
   title, 
   value, 
   icon: Icon, 
   description, 
-  className 
+  className,
+  linkTo
 }: { 
   title: string; 
   value: string; 
   icon: React.ElementType;
   description?: string;
   className?: string;
-}) => (
-  <Card className={className}>
-    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-sm font-medium">{title}</CardTitle>
-      <Icon className="w-4 h-4 text-muted-foreground" />
-    </CardHeader>
-    <CardContent>
-      <div className="text-2xl font-bold">{value}</div>
-      {description && (
-        <p className="text-xs text-muted-foreground mt-1">{description}</p>
-      )}
-    </CardContent>
-  </Card>
-);
+  linkTo?: string;
+}) => {
+  const CardWrapper = linkTo ? Link : 'div';
+  
+  return (
+    <CardWrapper to={linkTo || '#'} className={className}>
+      <Card className={linkTo ? 'hover:border-primary/50 transition-colors' : ''}>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <Icon className="w-4 h-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{value}</div>
+          {description && (
+            <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          )}
+        </CardContent>
+      </Card>
+    </CardWrapper>
+  );
+};
 
 export const Dashboard = () => {
   // Dummy data for demonstration
@@ -39,24 +49,28 @@ export const Dashboard = () => {
       value: "8",
       icon: BookOpen,
       description: "Pour la session en cours",
+      linkTo: "/exam-management"
     },
     {
       title: "Salles disponibles",
       value: "5",
       icon: Layout,
       description: "Avec 410 places au total",
+      linkTo: "/room-management"
     },
     {
       title: "Filières & Promotions",
       value: "7",
       icon: Users,
       description: "Réparties sur 5 filières",
+      linkTo: "/departments"
     },
     {
       title: "Planning généré",
       value: "100%",
       icon: Check,
       description: "Tous les examens sont planifiés",
+      linkTo: "/schedule"
     },
   ];
 
@@ -124,6 +138,7 @@ export const Dashboard = () => {
             value={stat.value}
             icon={stat.icon}
             description={stat.description}
+            linkTo={stat.linkTo}
             className="animate-in slide-in-from-top delay-100"
           />
         ))}
@@ -132,20 +147,21 @@ export const Dashboard = () => {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight">Examens</h2>
-          <a 
-            href="/exam-management" 
+          <Link 
+            to="/exam-management" 
             className="text-sm text-primary hover:underline"
           >
             Voir tous
-          </a>
+          </Link>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {exams.map((exam, index) => (
-            <ExamCard
-              key={index}
-              {...exam}
-              className="animate-in slide-in-from-top delay-200"
-            />
+            <Link key={index} to="/exam-management">
+              <ExamCard
+                {...exam}
+                className="animate-in slide-in-from-top delay-200 hover:border-primary/50 transition-colors"
+              />
+            </Link>
           ))}
         </div>
       </section>
@@ -153,20 +169,21 @@ export const Dashboard = () => {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold tracking-tight">Salles</h2>
-          <a 
-            href="/room-management" 
+          <Link 
+            to="/room-management" 
             className="text-sm text-primary hover:underline"
           >
             Voir toutes
-          </a>
+          </Link>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {rooms.map((room, index) => (
-            <RoomCard
-              key={index}
-              {...room}
-              className="animate-in slide-in-from-top delay-300"
-            />
+            <Link key={index} to="/room-management">
+              <RoomCard
+                {...room}
+                className="animate-in slide-in-from-top delay-300 hover:border-primary/50 transition-colors"
+              />
+            </Link>
           ))}
         </div>
       </section>
@@ -190,6 +207,13 @@ export const Dashboard = () => {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Assurez-vous que toutes les contraintes sont correctement définies avant de générer le planning.
                   </p>
+                  <div className="mt-2">
+                    <Link to="/departments">
+                      <Button variant="outline" size="sm">
+                        Gérer les filières
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -201,6 +225,13 @@ export const Dashboard = () => {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Utilisez l'algorithme d'optimisation pour générer un planning optimal des examens.
                   </p>
+                  <div className="mt-2">
+                    <Link to="/schedule">
+                      <Button variant="outline" size="sm">
+                        Aller au planning
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -212,6 +243,13 @@ export const Dashboard = () => {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Examinez les conflits potentiels et résolvez-les manuellement si nécessaire.
                   </p>
+                  <div className="mt-2">
+                    <Link to="/schedule">
+                      <Button variant="outline" size="sm">
+                        Vérifier les conflits
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>

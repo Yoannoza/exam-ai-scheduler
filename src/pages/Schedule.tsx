@@ -3,10 +3,41 @@ import { useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
-import { Calendar, Download, RotateCcw, Check, AlertTriangle } from 'lucide-react';
+import { Calendar, Download, RotateCcw, Check, AlertTriangle, FileEdit, Calendar as CalendarIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface ScheduleItem {
+  room: string;
+  exam: string;
+  departments: string[];
+}
 
 const Schedule = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [currentConflict, setCurrentConflict] = useState<{exam1: string, exam2: string, reason: string} | null>(null);
+  const [exportFormat, setExportFormat] = useState("pdf");
+  const { toast } = useToast();
 
   const toggleSidebar = () => {
     setSidebarExpanded(!sidebarExpanded);
@@ -16,7 +47,7 @@ const Schedule = () => {
   const days = ["Jour 1", "Jour 2", "Jour 3"];
   const timeSlots = ["8h-10h", "10h-12h", "13h-15h", "15h-17h", "17h-19h"];
   
-  const schedule = {
+  const [schedule, setSchedule] = useState<Record<string, Record<string, ScheduleItem[]>>>({
     "Jour 1": {
       "8h-10h": [
         { room: "IRAN2", exam: "E1", departments: ["GL-L1"] },
@@ -53,6 +84,75 @@ const Schedule = () => {
       "15h-17h": [],
       "17h-19h": []
     }
+  });
+
+  const [conflicts, setConflicts] = useState<{exam1: string, exam2: string, reason: string}[]>([]);
+
+  const handleRegenerate = () => {
+    setIsRegenerating(true);
+    
+    // Simuler un délai d'attente
+    setTimeout(() => {
+      // Créer une copie du planning avec de légères modifications
+      const newSchedule = {...schedule};
+      
+      // Échanger deux examens
+      const temp = newSchedule["Jour 1"]["8h-10h"][0];
+      newSchedule["Jour 1"]["8h-10h"][0] = newSchedule["Jour 3"]["10h-12h"][0];
+      newSchedule["Jour 3"]["10h-12h"][0] = temp;
+      
+      setSchedule(newSchedule);
+      setIsRegenerating(false);
+      
+      toast({
+        title: "Planning régénéré",
+        description: "Le planning a été régénéré avec succès.",
+      });
+    }, 2000);
+  };
+
+  const handleExport = () => {
+    setIsExporting(true);
+    
+    // Simuler un délai d'attente
+    setTimeout(() => {
+      setIsExporting(false);
+      setIsExportDialogOpen(false);
+      
+      toast({
+        title: "Planning exporté",
+        description: `Le planning a été exporté au format ${exportFormat.toUpperCase()}.`,
+      });
+    }, 1500);
+  };
+
+  const handleEditExam = (day: string, timeSlot: string, examIndex: number) => {
+    const exam = schedule[day][timeSlot][examIndex];
+    
+    toast({
+      title: "Modification d'examen",
+      description: `Modification de l'examen ${exam.exam} dans la salle ${exam.room} en cours de développement.`,
+    });
+  };
+
+  const checkForConflicts = () => {
+    // Simuler un conflit
+    setCurrentConflict({
+      exam1: "E1",
+      exam2: "E3",
+      reason: "Ces examens partagent des étudiants de la filière GL-L1"
+    });
+    setIsConflictDialogOpen(true);
+  };
+
+  const resolveConflict = () => {
+    if (currentConflict) {
+      toast({
+        title: "Conflit résolu",
+        description: `Le conflit entre ${currentConflict.exam1} et ${currentConflict.exam2} a été résolu.`,
+      });
+      setIsConflictDialogOpen(false);
+    }
   };
 
   return (
@@ -73,14 +173,27 @@ const Schedule = () => {
               <h1 className="text-2xl font-semibold tracking-tight">Planning des Examens</h1>
             </div>
             <div className="flex items-center gap-3">
-              <button className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium border border-input rounded-lg hover:bg-accent transition-colors">
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Regénérer
-              </button>
-              <button className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
+              <Button 
+                variant="outline" 
+                onClick={() => checkForConflicts()}
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Vérifier les conflits
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleRegenerate} 
+                disabled={isRegenerating}
+              >
+                <RotateCcw className={`w-4 h-4 mr-2 ${isRegenerating ? 'animate-spin' : ''}`} />
+                {isRegenerating ? 'Régénération...' : 'Regénérer'}
+              </Button>
+              <Button 
+                onClick={() => setIsExportDialogOpen(true)}
+              >
                 <Download className="w-4 h-4 mr-2" />
                 Exporter
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -144,7 +257,7 @@ const Schedule = () => {
                         {(schedule[day][slot] || []).map((item, i) => (
                           <div 
                             key={i} 
-                            className="mb-2 p-2 rounded-lg bg-primary/10 text-primary border border-primary/20"
+                            className="mb-2 p-2 rounded-lg bg-primary/10 text-primary border border-primary/20 group relative"
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-medium">{item.exam}</span>
@@ -152,6 +265,16 @@ const Schedule = () => {
                             </div>
                             <div className="mt-1 text-xs">
                               {item.departments.join(", ")}
+                            </div>
+                            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-5 w-5" 
+                                onClick={() => handleEditExam(day, slot, i)}
+                              >
+                                <FileEdit className="h-3 w-3" />
+                              </Button>
                             </div>
                           </div>
                         ))}
@@ -190,8 +313,121 @@ const Schedule = () => {
           </div>
         </main>
       </div>
+
+      {/* Dialog de vérification des conflits */}
+      <Dialog open={isConflictDialogOpen} onOpenChange={setIsConflictDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Conflit détecté</DialogTitle>
+            <DialogDescription>
+              Un conflit a été détecté entre les examens suivants:
+            </DialogDescription>
+          </DialogHeader>
+          {currentConflict && (
+            <div className="py-4">
+              <div className="flex items-center justify-center gap-6 mb-4">
+                <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/20 text-center">
+                  <p className="font-semibold text-lg">{currentConflict.exam1}</p>
+                  <p className="text-sm text-muted-foreground">Jour 1, 8h-10h</p>
+                </div>
+                <AlertTriangle className="text-destructive" />
+                <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/20 text-center">
+                  <p className="font-semibold text-lg">{currentConflict.exam2}</p>
+                  <p className="text-sm text-muted-foreground">Jour 1, 8h-10h</p>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground text-center">
+                Raison du conflit: {currentConflict.reason}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsConflictDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={resolveConflict}>
+              Résoudre automatiquement
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog d'exportation */}
+      <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Exporter le planning</DialogTitle>
+            <DialogDescription>
+              Choisissez le format d'exportation pour le planning des examens.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Format</Label>
+              <Select
+                value={exportFormat}
+                onValueChange={setExportFormat}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner un format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pdf">PDF</SelectItem>
+                  <SelectItem value="excel">Excel</SelectItem>
+                  <SelectItem value="csv">CSV</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="w-4 h-4 text-muted-foreground" />
+                <Label>Période</Label>
+              </div>
+              <Select defaultValue="all">
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner une période" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les jours</SelectItem>
+                  <SelectItem value="day1">Jour 1</SelectItem>
+                  <SelectItem value="day2">Jour 2</SelectItem>
+                  <SelectItem value="day3">Jour 3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleExport} disabled={isExporting}>
+              {isExporting ? (
+                <>
+                  <span className="animate-spin mr-2">⏳</span>
+                  Exportation...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Exporter
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+
+// Composant Label séparé pour la réutilisation
+const Label = ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => (
+  <label
+    htmlFor={htmlFor}
+    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+  >
+    {children}
+  </label>
+);
 
 export default Schedule;

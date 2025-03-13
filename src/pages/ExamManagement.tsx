@@ -2,19 +2,22 @@
 import { useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
+import { Card, CardContent } from '@/components/common/Card';
 import { ExamCard } from '@/components/common/ExamCard';
-import { BookOpen, Plus, Search, Filter } from 'lucide-react';
+import { ExamFormModal, ExamFormData } from '@/components/common/ExamFormModal';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { BookOpen, Plus, Search, Filter, FileEdit, Trash2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const ExamManagement = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
-
-  const toggleSidebar = () => {
-    setSidebarExpanded(!sidebarExpanded);
-  };
-
-  // Dummy data for demonstration
-  const exams = [
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentExam, setCurrentExam] = useState<ExamFormData | undefined>(undefined);
+  const [exams, setExams] = useState<ExamFormData[]>([
     {
       id: "E1",
       title: "Algorithmes et Programmation",
@@ -71,7 +74,73 @@ const ExamManagement = () => {
       departments: ["SIRI-M2"],
       students: 25,
     },
-  ];
+  ]);
+  const { toast } = useToast();
+
+  const toggleSidebar = () => {
+    setSidebarExpanded(!sidebarExpanded);
+  };
+
+  const filteredExams = exams.filter(exam => {
+    const matchesSearch = exam.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         (exam.id && exam.id.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesDepartment = !selectedDepartment || 
+                             (exam.departments && exam.departments.some(dept => dept.includes(selectedDepartment)));
+    return matchesSearch && matchesDepartment;
+  });
+
+  const handleAddExam = () => {
+    setIsEditing(false);
+    setCurrentExam(undefined);
+    setIsModalOpen(true);
+  };
+
+  const handleEditExam = (examId: string) => {
+    const exam = exams.find(e => e.id === examId);
+    if (exam) {
+      setCurrentExam(exam);
+      setIsEditing(true);
+      setIsModalOpen(true);
+    }
+  };
+
+  const handleDeleteExam = (examId: string) => {
+    setExams(exams.filter(e => e.id !== examId));
+    toast({
+      title: "Examen supprimé",
+      description: `L'examen ${examId} a été supprimé avec succès.`,
+    });
+  };
+
+  const handleFormSubmit = (data: ExamFormData) => {
+    if (isEditing && currentExam?.id) {
+      // Mise à jour d'un examen existant
+      setExams(exams.map(e => e.id === currentExam.id ? { ...data, id: currentExam.id } : e));
+      toast({
+        title: "Examen mis à jour",
+        description: `L'examen ${currentExam.id} a été mis à jour avec succès.`,
+      });
+    } else {
+      // Ajout d'un nouvel examen
+      const newId = `E${exams.length + 1}`;
+      setExams([...exams, { ...data, id: newId }]);
+      toast({
+        title: "Examen ajouté",
+        description: `L'examen ${newId} a été ajouté avec succès.`,
+      });
+    }
+    setIsModalOpen(false);
+  };
+
+  const availableDepartments = Array.from(
+    new Set(
+      exams.flatMap(exam => exam.departments).filter(Boolean)
+    )
+  );
+
+  const handleFilterChange = (department: string) => {
+    setSelectedDepartment(selectedDepartment === department ? null : department);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -90,10 +159,10 @@ const ExamManagement = () => {
               <BookOpen className="w-6 h-6 mr-3 text-primary" />
               <h1 className="text-2xl font-semibold tracking-tight">Gestion des Examens</h1>
             </div>
-            <button className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
+            <Button onClick={handleAddExam}>
               <Plus className="w-4 h-4 mr-2" />
               Ajouter un examen
-            </button>
+            </Button>
           </div>
 
           <Card className="mb-8">
@@ -101,31 +170,78 @@ const ExamManagement = () => {
               <div className="flex flex-col md:flex-row gap-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <input 
+                  <Input 
                     type="text" 
                     placeholder="Rechercher un examen..." 
-                    className="pl-10 h-10 w-full rounded-lg bg-background border border-input text-sm focus:ring-1 focus:ring-primary focus-visible:outline-none"
+                    className="pl-10"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <button className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium border border-input rounded-lg hover:bg-accent transition-colors">
-                  <Filter className="w-4 h-4 mr-2" />
-                  Filtrer
-                </button>
+                <div className="flex gap-2 overflow-x-auto">
+                  {availableDepartments.map((department) => (
+                    <Button
+                      key={department}
+                      variant={selectedDepartment === department ? "default" : "outline"}
+                      onClick={() => handleFilterChange(department)}
+                      className="whitespace-nowrap"
+                    >
+                      {department}
+                    </Button>
+                  ))}
+                  {selectedDepartment && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setSelectedDepartment(null)}
+                      className="whitespace-nowrap"
+                    >
+                      Réinitialiser
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {exams.map((exam, index) => (
-              <ExamCard
-                key={index}
-                {...exam}
-                className="animate-in slide-in-from-top delay-100"
-              />
+            {filteredExams.map((exam) => (
+              <div key={exam.id} className="relative group">
+                <ExamCard
+                  id={exam.id || ''}
+                  title={exam.title}
+                  duration={exam.duration}
+                  departments={exam.departments}
+                  students={exam.students}
+                  className="animate-in slide-in-from-top delay-100"
+                />
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => handleEditExam(exam.id || '')}>
+                      <FileEdit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDeleteExam(exam.id || '')}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
             ))}
+            {filteredExams.length === 0 && (
+              <div className="col-span-full py-12 text-center text-muted-foreground">
+                Aucun examen trouvé.
+              </div>
+            )}
           </div>
         </main>
       </div>
+
+      <ExamFormModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleFormSubmit}
+        initialData={currentExam}
+        isEditing={isEditing}
+      />
     </div>
   );
 };
