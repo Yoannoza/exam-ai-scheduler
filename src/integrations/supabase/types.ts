@@ -9,7 +9,108 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      departments: {
+        Row: {
+          exams: number
+          id: string
+          levels: string[]
+          name: string
+          short_name: string
+          students: number
+        }
+        Insert: {
+          exams?: number
+          id?: string
+          levels?: string[]
+          name: string
+          short_name: string
+          students?: number
+        }
+        Update: {
+          exams?: number
+          id?: string
+          levels?: string[]
+          name?: string
+          short_name?: string
+          students?: number
+        }
+        Relationships: []
+      }
+      exams: {
+        Row: {
+          departments: string[]
+          duration: number
+          id: string
+          students: number
+          title: string
+        }
+        Insert: {
+          departments?: string[]
+          duration?: number
+          id?: string
+          students?: number
+          title: string
+        }
+        Update: {
+          departments?: string[]
+          duration?: number
+          id?: string
+          students?: number
+          title?: string
+        }
+        Relationships: []
+      }
+      rooms: {
+        Row: {
+          availability: number
+          capacity: number
+          id: string
+          name: string
+          restrictions: Json | null
+        }
+        Insert: {
+          availability?: number
+          capacity: number
+          id?: string
+          name: string
+          restrictions?: Json | null
+        }
+        Update: {
+          availability?: number
+          capacity?: number
+          id?: string
+          name?: string
+          restrictions?: Json | null
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          department: string
+          exams_taken: number
+          id: string
+          level: string
+          name: string
+          total_exams: number
+        }
+        Insert: {
+          department: string
+          exams_taken?: number
+          id?: string
+          level: string
+          name: string
+          total_exams?: number
+        }
+        Update: {
+          department?: string
+          exams_taken?: number
+          id?: string
+          level?: string
+          name?: string
+          total_exams?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

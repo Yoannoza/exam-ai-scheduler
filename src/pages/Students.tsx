@@ -1,21 +1,23 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
+import { Card, CardContent } from '@/components/common/Card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Users, Plus, Search, Filter, UserPlus, Trash2, FileEdit } from 'lucide-react';
+import { Users, Plus, Search, UserPlus, Trash2, FileEdit, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface Student {
   id: string;
   name: string;
   department: string;
   level: string;
-  examsTaken: number;
-  totalExams: number;
+  exams_taken: number;
+  total_exams: number;
 }
 
 const Students = () => {
@@ -23,70 +25,117 @@ const Students = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const toggleSidebar = () => {
     setSidebarExpanded(!sidebarExpanded);
   };
 
-  // Données fictives pour les étudiants
-  const students: Student[] = [
-    {
-      id: "STD001",
-      name: "Thomas Durand",
-      department: "GL",
-      level: "L1",
-      examsTaken: 1,
-      totalExams: 2
+  // Fetch students from Supabase
+  const { data: students = [], isLoading } = useQuery({
+    queryKey: ['students'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*');
+        
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: `Impossible de charger les étudiants: ${error.message}`,
+          variant: "destructive"
+        });
+        return [];
+      }
+      
+      return data as Student[];
     },
-    {
-      id: "STD002",
-      name: "Marie Leclerc",
-      department: "GL",
-      level: "L2",
-      examsTaken: 0,
-      totalExams: 1
+  });
+
+  // Add student mutation
+  const addStudentMutation = useMutation({
+    mutationFn: async (newStudent: Omit<Student, 'id'>) => {
+      const { data, error } = await supabase
+        .from('students')
+        .insert([newStudent])
+        .select()
+        .single();
+        
+      if (error) throw error;
+      return data;
     },
-    {
-      id: "STD003",
-      name: "Jean Moreau",
-      department: "IM",
-      level: "L2",
-      examsTaken: 1,
-      totalExams: 2
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      toast({
+        title: "Étudiant ajouté",
+        description: "L'étudiant a été ajouté avec succès.",
+      });
     },
-    {
-      id: "STD004",
-      name: "Sophie Martin",
-      department: "SI",
-      level: "L3",
-      examsTaken: 0,
-      totalExams: 1
-    },
-    {
-      id: "STD005",
-      name: "Pierre Lambert",
-      department: "IA",
-      level: "M1",
-      examsTaken: 1,
-      totalExams: 1
-    },
-    {
-      id: "STD006",
-      name: "Lucie Bernard",
-      department: "SEIOT",
-      level: "L3",
-      examsTaken: 0,
-      totalExams: 1
-    },
-    {
-      id: "STD007",
-      name: "Matthieu Petit",
-      department: "SIRI",
-      level: "M2",
-      examsTaken: 0,
-      totalExams: 1
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible d'ajouter l'étudiant: ${error.message}`,
+        variant: "destructive"
+      });
     }
-  ];
+  });
+
+  // Update student mutation
+  const updateStudentMutation = useMutation({
+    mutationFn: async (student: Student) => {
+      const { id, ...studentData } = student;
+      const { data, error } = await supabase
+        .from('students')
+        .update(studentData)
+        .eq('id', id)
+        .select()
+        .single();
+        
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      toast({
+        title: "Étudiant mis à jour",
+        description: "L'étudiant a été mis à jour avec succès.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible de mettre à jour l'étudiant: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Delete student mutation
+  const deleteStudentMutation = useMutation({
+    mutationFn: async (studentId: string) => {
+      const { error } = await supabase
+        .from('students')
+        .delete()
+        .eq('id', studentId);
+        
+      if (error) throw error;
+      return studentId;
+    },
+    onSuccess: (studentId) => {
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      toast({
+        title: "Étudiant supprimé",
+        description: "L'étudiant a été supprimé avec succès.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible de supprimer l'étudiant: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
 
   const departments = [...new Set(students.map(student => student.department))];
 
@@ -98,10 +147,17 @@ const Students = () => {
   });
 
   const handleAddStudent = () => {
-    toast({
-      title: "Fonctionnalité à venir",
-      description: "L'ajout d'étudiant sera bientôt disponible.",
-    });
+    // This would typically open a modal for adding a student
+    // For now, we'll add a sample student
+    const newStudent = {
+      name: "Nouvel Étudiant",
+      department: "GL",
+      level: "L1",
+      exams_taken: 0,
+      total_exams: 2
+    };
+    
+    addStudentMutation.mutate(newStudent);
   };
 
   const handleEditStudent = (studentId: string) => {
@@ -112,15 +168,60 @@ const Students = () => {
   };
 
   const handleDeleteStudent = (studentId: string) => {
-    toast({
-      title: "Suppression d'étudiant",
-      description: `Étudiant ${studentId} supprimé avec succès.`,
-    });
+    if (confirm("Êtes-vous sûr de vouloir supprimer cet étudiant ?")) {
+      deleteStudentMutation.mutate(studentId);
+    }
   };
 
   const handleFilterChange = (department: string) => {
     setSelectedDepartment(selectedDepartment === department ? null : department);
   };
+
+  // If no students exist, let's create some initial data
+  useEffect(() => {
+    const initializeStudents = async () => {
+      if (!isLoading && students.length === 0) {
+        const initialStudents = [
+          {
+            name: "Thomas Durand",
+            department: "GL",
+            level: "L1",
+            exams_taken: 1,
+            total_exams: 2
+          },
+          {
+            name: "Marie Leclerc",
+            department: "GL",
+            level: "L2",
+            exams_taken: 0,
+            total_exams: 1
+          },
+          {
+            name: "Jean Moreau",
+            department: "IM",
+            level: "L2",
+            exams_taken: 1,
+            total_exams: 2
+          },
+          {
+            name: "Sophie Martin",
+            department: "SI",
+            level: "L3",
+            exams_taken: 0,
+            total_exams: 1
+          }
+        ];
+        
+        for (const student of initialStudents) {
+          await supabase.from('students').insert([student]);
+        }
+        
+        queryClient.invalidateQueries({ queryKey: ['students'] });
+      }
+    };
+    
+    initializeStudents();
+  }, [isLoading, students.length, queryClient]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -183,60 +284,66 @@ const Students = () => {
             </CardContent>
           </Card>
 
-          <div className="overflow-hidden rounded-lg border border-border">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nom</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Filière</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Niveau</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Examens</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredStudents.map((student) => (
-                  <tr key={student.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3">{student.id}</td>
-                    <td className="px-4 py-3 font-medium">{student.name}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                        {student.department}-{student.level}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{student.level}</td>
-                    <td className="px-4 py-3">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span>{student.examsTaken} sur {student.totalExams}</span>
-                          <span>{Math.round((student.examsTaken/student.totalExams) * 100)}%</span>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-border">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-muted/50">
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nom</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Filière</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Niveau</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Examens</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredStudents.map((student) => (
+                    <tr key={student.id} className="hover:bg-muted/30">
+                      <td className="px-4 py-3">{student.id}</td>
+                      <td className="px-4 py-3 font-medium">{student.name}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                          {student.department}-{student.level}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{student.level}</td>
+                      <td className="px-4 py-3">
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span>{student.exams_taken} sur {student.total_exams}</span>
+                            <span>{Math.round((student.exams_taken/student.total_exams) * 100)}%</span>
+                          </div>
+                          <Progress value={(student.exams_taken/student.total_exams) * 100} className="h-2" />
                         </div>
-                        <Progress value={(student.examsTaken/student.totalExams) * 100} className="h-2" />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEditStudent(student.id)}>
-                          <FileEdit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDeleteStudent(student.id)}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredStudents.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                      Aucun étudiant trouvé
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => handleEditStudent(student.id)}>
+                            <FileEdit className="w-4 h-4" />
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleDeleteStudent(student.id)}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredStudents.length === 0 && !isLoading && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                        Aucun étudiant trouvé
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </main>
       </div>
     </div>

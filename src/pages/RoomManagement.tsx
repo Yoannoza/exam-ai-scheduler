@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent } from '@/components/common/Card';
@@ -7,8 +7,10 @@ import { RoomCard } from '@/components/common/RoomCard';
 import { RoomFormModal, RoomFormData } from '@/components/common/RoomFormModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Layout, Plus, Search, Filter, FileEdit, Trash2 } from 'lucide-react';
+import { Layout, Plus, Search, Trash2, FileEdit, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const RoomManagement = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
@@ -17,49 +19,126 @@ const RoomManagement = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentRoom, setCurrentRoom] = useState<RoomFormData | undefined>(undefined);
-  const [rooms, setRooms] = useState<RoomFormData[]>([
-    {
-      id: "R1",
-      name: "IRAN2",
-      capacity: 100,
-      availability: 100,
-    },
-    {
-      id: "R2",
-      name: "Padtice",
-      capacity: 80,
-      availability: 100,
-    },
-    {
-      id: "R3",
-      name: "IRAN1",
-      capacity: 60,
-      availability: 80,
-      restrictions: {
-        specificDays: ['Jour 1', 'Jour 2']
-      }
-    },
-    {
-      id: "R4",
-      name: "SOKPON",
-      capacity: 120,
-      availability: 87,
-    },
-    {
-      id: "R5",
-      name: "Zone Master A2",
-      capacity: 50,
-      availability: 60,
-      restrictions: {
-        afternoonOnly: true
-      }
-    },
-  ]);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const toggleSidebar = () => {
     setSidebarExpanded(!sidebarExpanded);
   };
+  
+  // Fetch rooms from Supabase
+  const { data: rooms = [], isLoading } = useQuery({
+    queryKey: ['rooms'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*');
+        
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: `Impossible de charger les salles: ${error.message}`,
+          variant: "destructive"
+        });
+        return [];
+      }
+      
+      return data.map(room => ({
+        id: room.id,
+        name: room.name,
+        capacity: room.capacity,
+        availability: room.availability,
+        restrictions: room.restrictions as RoomFormData['restrictions']
+      }));
+    },
+  });
+
+  // Add room mutation
+  const addRoomMutation = useMutation({
+    mutationFn: async (newRoom: Omit<RoomFormData, 'id'>) => {
+      const { data, error } = await supabase
+        .from('rooms')
+        .insert([newRoom])
+        .select()
+        .single();
+        
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      toast({
+        title: "Salle ajoutée",
+        description: "La salle a été ajoutée avec succès.",
+      });
+      setIsModalOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible d'ajouter la salle: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Update room mutation
+  const updateRoomMutation = useMutation({
+    mutationFn: async (updatedRoom: RoomFormData) => {
+      const { id, ...roomData } = updatedRoom;
+      const { data, error } = await supabase
+        .from('rooms')
+        .update(roomData)
+        .eq('id', id)
+        .select()
+        .single();
+        
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      toast({
+        title: "Salle mise à jour",
+        description: "La salle a été mise à jour avec succès.",
+      });
+      setIsModalOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible de mettre à jour la salle: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Delete room mutation
+  const deleteRoomMutation = useMutation({
+    mutationFn: async (roomId: string) => {
+      const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', roomId);
+        
+      if (error) throw error;
+      return roomId;
+    },
+    onSuccess: (roomId) => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      toast({
+        title: "Salle supprimée",
+        description: "La salle a été supprimée avec succès.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible de supprimer la salle: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
 
   const filteredRooms = rooms.filter(room => {
     const matchesSearch = room.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -83,31 +162,17 @@ const RoomManagement = () => {
   };
 
   const handleDeleteRoom = (roomId: string) => {
-    setRooms(rooms.filter(r => r.id !== roomId));
-    toast({
-      title: "Salle supprimée",
-      description: `La salle ${roomId} a été supprimée avec succès.`,
-    });
+    if (confirm("Êtes-vous sûr de vouloir supprimer cette salle ?")) {
+      deleteRoomMutation.mutate(roomId);
+    }
   };
 
   const handleFormSubmit = (data: RoomFormData) => {
     if (isEditing && currentRoom?.id) {
-      // Mise à jour d'une salle existante
-      setRooms(rooms.map(r => r.id === currentRoom.id ? { ...data, id: currentRoom.id } : r));
-      toast({
-        title: "Salle mise à jour",
-        description: `La salle ${currentRoom.id} a été mise à jour avec succès.`,
-      });
+      updateRoomMutation.mutate({ ...data, id: currentRoom.id });
     } else {
-      // Ajout d'une nouvelle salle
-      const newId = `R${rooms.length + 1}`;
-      setRooms([...rooms, { ...data, id: newId }]);
-      toast({
-        title: "Salle ajoutée",
-        description: `La salle ${data.name} a été ajoutée avec succès.`,
-      });
+      addRoomMutation.mutate(data);
     }
-    setIsModalOpen(false);
   };
 
   const capacityFilters = [50, 80, 100];
@@ -173,33 +238,39 @@ const RoomManagement = () => {
             </CardContent>
           </Card>
 
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredRooms.map((room) => (
-              <div key={room.id} className="relative group">
-                <RoomCard
-                  name={room.name}
-                  capacity={room.capacity}
-                  availability={room.availability}
-                  className="animate-in slide-in-from-top delay-100"
-                />
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => handleEditRoom(room.id || '')}>
-                      <FileEdit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteRoom(room.id || '')}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {filteredRooms.map((room) => (
+                <div key={room.id} className="relative group">
+                  <RoomCard
+                    name={room.name}
+                    capacity={room.capacity}
+                    availability={room.availability}
+                    className="animate-in slide-in-from-top delay-100"
+                  />
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEditRoom(room.id || '')}>
+                        <FileEdit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteRoom(room.id || '')}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {filteredRooms.length === 0 && (
-              <div className="col-span-full py-12 text-center text-muted-foreground">
-                Aucune salle trouvée.
-              </div>
-            )}
-          </div>
+              ))}
+              {filteredRooms.length === 0 && !isLoading && (
+                <div className="col-span-full py-12 text-center text-muted-foreground">
+                  Aucune salle trouvée.
+                </div>
+              )}
+            </div>
+          )}
         </main>
       </div>
 

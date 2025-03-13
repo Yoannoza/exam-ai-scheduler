@@ -1,11 +1,12 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
-import { Calendar, Download, RotateCcw, Check, AlertTriangle, FileEdit, Calendar as CalendarIcon } from 'lucide-react';
+import { Calendar, Download, RotateCcw, Check, AlertTriangle, FileEdit, Calendar as CalendarIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface ScheduleItem {
   room: string;
@@ -38,12 +41,13 @@ const Schedule = () => {
   const [currentConflict, setCurrentConflict] = useState<{exam1: string, exam2: string, reason: string} | null>(null);
   const [exportFormat, setExportFormat] = useState("pdf");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const toggleSidebar = () => {
     setSidebarExpanded(!sidebarExpanded);
   };
 
-  // Dummy data for the schedule
+  // Dummy data for the schedule - in a real implementation, this would be stored and fetched from Supabase
   const days = ["Jour 1", "Jour 2", "Jour 3"];
   const timeSlots = ["8h-10h", "10h-12h", "13h-15h", "15h-17h", "17h-19h"];
   
@@ -87,6 +91,48 @@ const Schedule = () => {
   });
 
   const [conflicts, setConflicts] = useState<{exam1: string, exam2: string, reason: string}[]>([]);
+
+  // Fetch rooms for schedule planning
+  const { data: rooms = [], isLoading: isLoadingRooms } = useQuery({
+    queryKey: ['rooms'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*');
+        
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: `Impossible de charger les salles: ${error.message}`,
+          variant: "destructive"
+        });
+        return [];
+      }
+      
+      return data;
+    },
+  });
+
+  // Fetch exams for schedule planning
+  const { data: exams = [], isLoading: isLoadingExams } = useQuery({
+    queryKey: ['exams'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('exams')
+        .select('*');
+        
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: `Impossible de charger les examens: ${error.message}`,
+          variant: "destructive"
+        });
+        return [];
+      }
+      
+      return data;
+    },
+  });
 
   const handleRegenerate = () => {
     setIsRegenerating(true);
@@ -155,6 +201,8 @@ const Schedule = () => {
     }
   };
 
+  const isLoading = isLoadingRooms || isLoadingExams;
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
@@ -206,7 +254,7 @@ const Schedule = () => {
                 <div className="flex-1 space-y-3">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-success"></div>
-                    <span className="text-sm">8 examens planifiés sur 8</span>
+                    <span className="text-sm">{exams.length} examens planifiés sur {exams.length}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-destructive"></div>
@@ -214,7 +262,7 @@ const Schedule = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-primary"></div>
-                    <span className="text-sm">5 salles utilisées sur 5</span>
+                    <span className="text-sm">{rooms.length} salles utilisées sur {rooms.length}</span>
                   </div>
                 </div>
                 <div className="flex-1">
@@ -232,59 +280,65 @@ const Schedule = () => {
             </CardContent>
           </Card>
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="p-3 bg-muted/50 border text-left font-medium text-muted-foreground">
-                    Créneaux
-                  </th>
-                  {days.map((day, i) => (
-                    <th key={i} className="p-3 bg-muted/50 border text-left font-medium text-muted-foreground">
-                      {day}
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="p-3 bg-muted/50 border text-left font-medium text-muted-foreground">
+                      Créneaux
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {timeSlots.map((slot, slotIndex) => (
-                  <tr key={slotIndex}>
-                    <td className="p-3 border bg-muted/30 font-medium">
-                      {slot}
-                    </td>
-                    {days.map((day, dayIndex) => (
-                      <td key={dayIndex} className="p-3 border min-w-[200px] h-[120px] align-top">
-                        {(schedule[day][slot] || []).map((item, i) => (
-                          <div 
-                            key={i} 
-                            className="mb-2 p-2 rounded-lg bg-primary/10 text-primary border border-primary/20 group relative"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium">{item.exam}</span>
-                              <span className="text-xs">{item.room}</span>
-                            </div>
-                            <div className="mt-1 text-xs">
-                              {item.departments.join(", ")}
-                            </div>
-                            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-5 w-5" 
-                                onClick={() => handleEditExam(day, slot, i)}
-                              >
-                                <FileEdit className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </td>
+                    {days.map((day, i) => (
+                      <th key={i} className="p-3 bg-muted/50 border text-left font-medium text-muted-foreground">
+                        {day}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {timeSlots.map((slot, slotIndex) => (
+                    <tr key={slotIndex}>
+                      <td className="p-3 border bg-muted/30 font-medium">
+                        {slot}
+                      </td>
+                      {days.map((day, dayIndex) => (
+                        <td key={dayIndex} className="p-3 border min-w-[200px] h-[120px] align-top">
+                          {(schedule[day][slot] || []).map((item, i) => (
+                            <div 
+                              key={i} 
+                              className="mb-2 p-2 rounded-lg bg-primary/10 text-primary border border-primary/20 group relative"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium">{item.exam}</span>
+                                <span className="text-xs">{item.room}</span>
+                              </div>
+                              <div className="mt-1 text-xs">
+                                {item.departments.join(", ")}
+                              </div>
+                              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-5 w-5" 
+                                  onClick={() => handleEditExam(day, slot, i)}
+                                >
+                                  <FileEdit className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div className="mt-8">
             <Card>
@@ -403,7 +457,7 @@ const Schedule = () => {
             <Button onClick={handleExport} disabled={isExporting}>
               {isExporting ? (
                 <>
-                  <span className="animate-spin mr-2">⏳</span>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Exportation...
                 </>
               ) : (
@@ -419,15 +473,5 @@ const Schedule = () => {
     </div>
   );
 };
-
-// Composant Label séparé pour la réutilisation
-const Label = ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) => (
-  <label
-    htmlFor={htmlFor}
-    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-  >
-    {children}
-  </label>
-);
 
 export default Schedule;

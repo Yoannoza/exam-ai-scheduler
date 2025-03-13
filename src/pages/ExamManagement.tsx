@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent } from '@/components/common/Card';
@@ -7,8 +7,10 @@ import { ExamCard } from '@/components/common/ExamCard';
 import { ExamFormModal, ExamFormData } from '@/components/common/ExamFormModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BookOpen, Plus, Search, Filter, FileEdit, Trash2 } from 'lucide-react';
+import { BookOpen, Plus, Search, FileEdit, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const ExamManagement = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
@@ -17,69 +19,126 @@ const ExamManagement = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentExam, setCurrentExam] = useState<ExamFormData | undefined>(undefined);
-  const [exams, setExams] = useState<ExamFormData[]>([
-    {
-      id: "E1",
-      title: "Algorithmes et Programmation",
-      duration: 2,
-      departments: ["GL-L1"],
-      students: 50,
-    },
-    {
-      id: "E2",
-      title: "Structures de Données",
-      duration: 3,
-      departments: ["GL-L1"],
-      students: 50,
-    },
-    {
-      id: "E3",
-      title: "Bases de Données",
-      duration: 2,
-      departments: ["IM-L2"],
-      students: 60,
-    },
-    {
-      id: "E4",
-      title: "Architecture Logicielle",
-      duration: 3,
-      departments: ["GL-L2", "IM-L2"],
-      students: 120,
-    },
-    {
-      id: "E5",
-      title: "Systèmes d'Information",
-      duration: 2,
-      departments: ["SI-L3"],
-      students: 40,
-    },
-    {
-      id: "E6",
-      title: "Intelligence Artificielle",
-      duration: 3,
-      departments: ["IA-M1"],
-      students: 30,
-    },
-    {
-      id: "E7",
-      title: "IoT et Systèmes Embarqués",
-      duration: 2,
-      departments: ["SEIOT-L3"],
-      students: 35,
-    },
-    {
-      id: "E8",
-      title: "Robotique et IA",
-      duration: 3,
-      departments: ["SIRI-M2"],
-      students: 25,
-    },
-  ]);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const toggleSidebar = () => {
     setSidebarExpanded(!sidebarExpanded);
   };
+
+  // Fetch exams from Supabase
+  const { data: exams = [], isLoading } = useQuery({
+    queryKey: ['exams'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('exams')
+        .select('*');
+        
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: `Impossible de charger les examens: ${error.message}`,
+          variant: "destructive"
+        });
+        return [];
+      }
+      
+      return data.map(exam => ({
+        id: exam.id,
+        title: exam.title,
+        duration: exam.duration,
+        departments: exam.departments,
+        students: exam.students
+      }));
+    },
+  });
+
+  // Add exam mutation
+  const addExamMutation = useMutation({
+    mutationFn: async (newExam: Omit<ExamFormData, 'id'>) => {
+      const { data, error } = await supabase
+        .from('exams')
+        .insert([newExam])
+        .select()
+        .single();
+        
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exams'] });
+      toast({
+        title: "Examen ajouté",
+        description: "L'examen a été ajouté avec succès.",
+      });
+      setIsModalOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible d'ajouter l'examen: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Update exam mutation
+  const updateExamMutation = useMutation({
+    mutationFn: async (updatedExam: ExamFormData) => {
+      const { id, ...examData } = updatedExam;
+      const { data, error } = await supabase
+        .from('exams')
+        .update(examData)
+        .eq('id', id)
+        .select()
+        .single();
+        
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['exams'] });
+      toast({
+        title: "Examen mis à jour",
+        description: "L'examen a été mis à jour avec succès.",
+      });
+      setIsModalOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible de mettre à jour l'examen: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Delete exam mutation
+  const deleteExamMutation = useMutation({
+    mutationFn: async (examId: string) => {
+      const { error } = await supabase
+        .from('exams')
+        .delete()
+        .eq('id', examId);
+        
+      if (error) throw error;
+      return examId;
+    },
+    onSuccess: (examId) => {
+      queryClient.invalidateQueries({ queryKey: ['exams'] });
+      toast({
+        title: "Examen supprimé",
+        description: "L'examen a été supprimé avec succès.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible de supprimer l'examen: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
 
   const filteredExams = exams.filter(exam => {
     const matchesSearch = exam.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -105,31 +164,17 @@ const ExamManagement = () => {
   };
 
   const handleDeleteExam = (examId: string) => {
-    setExams(exams.filter(e => e.id !== examId));
-    toast({
-      title: "Examen supprimé",
-      description: `L'examen ${examId} a été supprimé avec succès.`,
-    });
+    if (confirm("Êtes-vous sûr de vouloir supprimer cet examen ?")) {
+      deleteExamMutation.mutate(examId);
+    }
   };
 
   const handleFormSubmit = (data: ExamFormData) => {
     if (isEditing && currentExam?.id) {
-      // Mise à jour d'un examen existant
-      setExams(exams.map(e => e.id === currentExam.id ? { ...data, id: currentExam.id } : e));
-      toast({
-        title: "Examen mis à jour",
-        description: `L'examen ${currentExam.id} a été mis à jour avec succès.`,
-      });
+      updateExamMutation.mutate({ ...data, id: currentExam.id });
     } else {
-      // Ajout d'un nouvel examen
-      const newId = `E${exams.length + 1}`;
-      setExams([...exams, { ...data, id: newId }]);
-      toast({
-        title: "Examen ajouté",
-        description: `L'examen ${newId} a été ajouté avec succès.`,
-      });
+      addExamMutation.mutate(data);
     }
-    setIsModalOpen(false);
   };
 
   const availableDepartments = Array.from(
@@ -203,35 +248,41 @@ const ExamManagement = () => {
             </CardContent>
           </Card>
 
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredExams.map((exam) => (
-              <div key={exam.id} className="relative group">
-                <ExamCard
-                  id={exam.id || ''}
-                  title={exam.title}
-                  duration={exam.duration}
-                  departments={exam.departments}
-                  students={exam.students}
-                  className="animate-in slide-in-from-top delay-100"
-                />
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => handleEditExam(exam.id || '')}>
-                      <FileEdit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteExam(exam.id || '')}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {filteredExams.map((exam) => (
+                <div key={exam.id} className="relative group">
+                  <ExamCard
+                    id={exam.id || ''}
+                    title={exam.title}
+                    duration={exam.duration}
+                    departments={exam.departments}
+                    students={exam.students}
+                    className="animate-in slide-in-from-top delay-100"
+                  />
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEditExam(exam.id || '')}>
+                        <FileEdit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteExam(exam.id || '')}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {filteredExams.length === 0 && (
-              <div className="col-span-full py-12 text-center text-muted-foreground">
-                Aucun examen trouvé.
-              </div>
-            )}
-          </div>
+              ))}
+              {filteredExams.length === 0 && !isLoading && (
+                <div className="col-span-full py-12 text-center text-muted-foreground">
+                  Aucun examen trouvé.
+                </div>
+              )}
+            </div>
+          )}
         </main>
       </div>
 
