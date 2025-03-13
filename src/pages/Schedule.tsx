@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/common/Card';
-import { Calendar, Download, RotateCcw, Check, AlertTriangle, FileEdit, Calendar as CalendarIcon, Loader2 } from 'lucide-react';
+import { Calendar, Download, RotateCcw, Check, AlertTriangle, FileEdit, Calendar as CalendarIcon, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
@@ -25,8 +25,9 @@ import {
 } from "@/components/ui/select";
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { generateSchedule, syncAllDataToApi, ScheduleItem } from '@/services/scheduleApi';
 
-interface ScheduleItem {
+interface ScheduleItemUI {
   room: string;
   exam: string;
   departments: string[];
@@ -35,6 +36,7 @@ interface ScheduleItem {
 const Schedule = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -51,7 +53,7 @@ const Schedule = () => {
   const days = ["Jour 1", "Jour 2", "Jour 3"];
   const timeSlots = ["8h-10h", "10h-12h", "13h-15h", "15h-17h", "17h-19h"];
   
-  const [schedule, setSchedule] = useState<Record<string, Record<string, ScheduleItem[]>>>({
+  const [schedule, setSchedule] = useState<Record<string, Record<string, ScheduleItemUI[]>>>({
     "Jour 1": {
       "8h-10h": [
         { room: "IRAN2", exam: "E1", departments: ["GL-L1"] },
@@ -134,27 +136,104 @@ const Schedule = () => {
     },
   });
 
-  const handleRegenerate = () => {
-    setIsRegenerating(true);
-    
-    // Simuler un délai d'attente
-    setTimeout(() => {
-      // Créer une copie du planning avec de légères modifications
-      const newSchedule = {...schedule};
-      
-      // Échanger deux examens
-      const temp = newSchedule["Jour 1"]["8h-10h"][0];
-      newSchedule["Jour 1"]["8h-10h"][0] = newSchedule["Jour 3"]["10h-12h"][0];
-      newSchedule["Jour 3"]["10h-12h"][0] = temp;
-      
+  // Mutation for generating a schedule using FastAPI
+  const generateScheduleMutation = useMutation({
+    mutationFn: generateSchedule,
+    onSuccess: (data) => {
+      // Transform API response to our UI format
+      const newSchedule = transformApiScheduleToUiFormat(data);
       setSchedule(newSchedule);
-      setIsRegenerating(false);
-      
       toast({
         title: "Planning régénéré",
         description: "Le planning a été régénéré avec succès.",
       });
-    }, 2000);
+      setIsRegenerating(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible de générer le planning: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive"
+      });
+      setIsRegenerating(false);
+    }
+  });
+
+  // Mutation for syncing data to the API
+  const syncDataMutation = useMutation({
+    mutationFn: syncAllDataToApi,
+    onSuccess: () => {
+      toast({
+        title: "Données synchronisées",
+        description: "Les données ont été synchronisées avec l'API avec succès.",
+      });
+      setIsSyncing(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: `Impossible de synchroniser les données: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive"
+      });
+      setIsSyncing(false);
+    }
+  });
+
+  // Transform API schedule to our UI format
+  const transformApiScheduleToUiFormat = (apiSchedule: ScheduleItem[]): Record<string, Record<string, ScheduleItemUI[]>> => {
+    const newSchedule: Record<string, Record<string, ScheduleItemUI[]>> = {
+      "Jour 1": { "8h-10h": [], "10h-12h": [], "13h-15h": [], "15h-17h": [], "17h-19h": [] },
+      "Jour 2": { "8h-10h": [], "10h-12h": [], "13h-15h": [], "15h-17h": [], "17h-19h": [] },
+      "Jour 3": { "8h-10h": [], "10h-12h": [], "13h-15h": [], "15h-17h": [], "17h-19h": [] },
+    };
+    
+    // Map from creneau to day and timeslot
+    const creneauToTimeSlot: Record<number, {day: string, timeSlot: string}> = {
+      0: { day: "Jour 1", timeSlot: "8h-10h" },
+      1: { day: "Jour 1", timeSlot: "10h-12h" },
+      2: { day: "Jour 1", timeSlot: "13h-15h" },
+      3: { day: "Jour 1", timeSlot: "15h-17h" },
+      4: { day: "Jour 1", timeSlot: "17h-19h" },
+      5: { day: "Jour 2", timeSlot: "8h-10h" },
+      6: { day: "Jour 2", timeSlot: "10h-12h" },
+      7: { day: "Jour 2", timeSlot: "13h-15h" },
+      8: { day: "Jour 2", timeSlot: "15h-17h" },
+      9: { day: "Jour 2", timeSlot: "17h-19h" },
+      10: { day: "Jour 3", timeSlot: "8h-10h" },
+      11: { day: "Jour 3", timeSlot: "10h-12h" },
+      12: { day: "Jour 3", timeSlot: "13h-15h" },
+      13: { day: "Jour 3", timeSlot: "15h-17h" },
+      14: { day: "Jour 3", timeSlot: "17h-19h" },
+    };
+    
+    // Find departments for each exam
+    const examToDepartments: Record<string, string[]> = {};
+    exams.forEach(exam => {
+      examToDepartments[exam.id] = exam.departments;
+    });
+    
+    // Add each schedule item to the appropriate day and timeslot
+    apiSchedule.forEach(item => {
+      const { day, timeSlot } = creneauToTimeSlot[item.creneau];
+      
+      newSchedule[day][timeSlot].push({
+        room: item.salle,
+        exam: item.examen,
+        departments: examToDepartments[item.examen] || []
+      });
+    });
+    
+    return newSchedule;
+  };
+
+  const handleSyncData = () => {
+    setIsSyncing(true);
+    syncDataMutation.mutate();
+  };
+
+  const handleRegenerate = () => {
+    setIsRegenerating(true);
+    generateScheduleMutation.mutate();
   };
 
   const handleExport = () => {
@@ -221,6 +300,14 @@ const Schedule = () => {
               <h1 className="text-2xl font-semibold tracking-tight">Planning des Examens</h1>
             </div>
             <div className="flex items-center gap-3">
+              <Button 
+                variant="outline" 
+                onClick={handleSyncData}
+                disabled={isSyncing}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Synchronisation...' : 'Synchroniser avec l\'API'}
+              </Button>
               <Button 
                 variant="outline" 
                 onClick={() => checkForConflicts()}
